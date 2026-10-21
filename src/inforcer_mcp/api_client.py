@@ -84,6 +84,9 @@ class InforcerError(Exception):
 class InforcerCredentials:
     region: str
     api_key: str
+    # Set when a header value is malformed: tools then return invalid_argument
+    # instead of calling Inforcer, while tools/list still works.
+    header_error: str | None = None
 
     def __repr__(self) -> str:  # never leak the key into logs or tracebacks
         return f"InforcerCredentials(region={self.region!r}, api_key=<redacted>)"
@@ -102,6 +105,7 @@ class InforcerClient:
     def __init__(self, credentials: InforcerCredentials, http_client: httpx.AsyncClient | None = None):
         self._credentials = credentials
         self._http = http_client
+        self.header_error = credentials.header_error
         self.region = credentials.region
         self.base_url = REGION_BASE_URLS[credentials.region]
 

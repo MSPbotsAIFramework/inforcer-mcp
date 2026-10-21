@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Credential middleware: 401 / 400 on bad headers, region normalisation, isolation."""
+"""Credential middleware: 401 on missing headers, deferred format errors, region normalisation, isolation."""
 
 import asyncio
 
@@ -48,11 +48,23 @@ def test_missing_headers_return_401(headers):
     assert resp.json()["required_headers"] == list(CREDS)
 
 
-def test_unknown_region_returns_400():
+def test_unknown_region_still_lists_tools():
+    # The admin console refreshes the tool catalog with placeholder header values.
+    headers = {"X-Inforcer-Region": "placeholder", "X-Inforcer-Api-Key": "placeholder"}
     with _client() as client:
-        resp = client.post("/mcp", json=LIST_TOOLS, headers=MCP_HEADERS | CREDS | {"X-Inforcer-Region": "apac"})
-    assert resp.status_code == 400
-    assert "anz, eu, uk, us" in resp.json()["message"]
+        resp = client.post("/mcp", json=LIST_TOOLS, headers=MCP_HEADERS | headers)
+    assert resp.status_code == 200
+    assert "inforcer_tenants_list" in resp.text
+
+
+def test_unknown_region_is_reported_by_tools():
+    seen = _run_middleware([(b"x-inforcer-region", b"apac"), (b"x-inforcer-api-key", b"key")])
+    assert "anz, eu, uk, us" in seen["client"].header_error
+    call = {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "inforcer_tenants_list", "arguments": {}}}
+    with _client() as client:
+        resp = client.post("/mcp", json=call, headers=MCP_HEADERS | CREDS | {"X-Inforcer-Region": "apac"})
+    assert resp.status_code == 200
+    assert '\\"invalid_argument\\"' in resp.text and "anz, eu, uk, us" in resp.text
 
 
 @pytest.mark.parametrize(

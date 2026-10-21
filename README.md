@@ -30,8 +30,9 @@ needed only for the two run tools.
 How the key is sent to Inforcer: every call goes to `https://api-{region}.inforcer.com/api/beta/...`
 with the key in the `Inf-Api-Key` header.
 
-A request to `/mcp` without both headers gets HTTP 401 naming the missing one; an unknown region
-gets HTTP 400.
+A request to `/mcp` without both headers gets HTTP 401 naming the missing one. An unknown region
+does not block the request (tools/list still works); every tool call then returns an
+`invalid_argument` error naming the allowed regions.
 
 ## Tools
 

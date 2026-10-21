@@ -29,6 +29,9 @@ from .config import REGION_BASE_URLS, Settings
 
 HEADER_REGION = "X-Inforcer-Region"
 HEADER_API_KEY = "X-Inforcer-Api-Key"
+# Stand-in for a malformed region so the client can be built; never called,
+# because tools return the header error first.
+DEFAULT_REGION = "us"
 REQUIRED_HEADERS = [HEADER_REGION, HEADER_API_KEY]
 
 _PLACEHOLDER = re.compile(r"^\$\{.*\}$")
@@ -91,7 +94,11 @@ def _error(scope: Scope, receive: Receive, send: Send, status: int, error: str, 
 
 
 class GatewayCredentialsMiddleware:
-    """Reads the Inforcer region and API key on /mcp requests into the request context."""
+    """Reads the Inforcer region and API key on /mcp requests into the request context.
+
+    Missing required headers -> 401 listing them. A malformed region does not block
+    the request (tools/list must work with any values); tools report it instead.
+    """
 
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -109,12 +116,13 @@ class GatewayCredentialsMiddleware:
             await _error(scope, receive, send, 401, "Missing credentials", f"Missing header(s): {', '.join(missing)}")
             return
         region = normalize_region(region_raw)
+        header_error = None
         if region is None:
-            await _error(scope, receive, send, 400, "Invalid credentials", f"{HEADER_REGION} must be one of: {', '.join(REGION_BASE_URLS)}")
-            return
+            header_error = f"{HEADER_REGION} must be one of: {', '.join(REGION_BASE_URLS)}"
+            region = DEFAULT_REGION
 
         request_id = (request.headers.get("x-request-id") or "").strip()[:64] or uuid.uuid4().hex[:12]
-        creds_token = _credentials_var.set(InforcerCredentials(region, api_key))
+        creds_token = _credentials_var.set(InforcerCredentials(region, api_key, header_error))
         rid_token = request_id_var.set(request_id)
         try:
             await self.app(scope, receive, send)
