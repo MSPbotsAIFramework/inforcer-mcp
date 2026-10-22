@@ -18,7 +18,19 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..api_client import InforcerClient
-from ._common import READ_ONLY, ClientFactory, TenantArg, data, list_tenants, match_tenant, resolve_tenant_id, run_tool
+from ._common import (
+    READ_ONLY,
+    ClientFactory,
+    Limit,
+    Offset,
+    TenantArg,
+    data,
+    list_tenants,
+    local_page,
+    match_tenant,
+    resolve_tenant_id,
+    run_tool,
+)
 
 # Large per-tenant fields left out of the list (inforcer_tenants_get returns them).
 _LIST_SKIP = ("policyDiff", "licenses")
@@ -30,12 +42,12 @@ def summary(tenant: dict) -> dict:
 
 def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
     @mcp.tool(annotations=READ_ONLY)
-    async def inforcer_tenants_list() -> str:
+    async def inforcer_tenants_list(offset: Offset = None, limit: Limit = None) -> str:
         """List managed tenants: Client Tenant ID, name, DNS name, Microsoft tenant id, Secure Score, tags."""
 
         async def action(client: InforcerClient) -> dict:
             tenants = await list_tenants(client)
-            return {"tenants": [summary(t) for t in tenants], "count": len(tenants)}
+            return local_page("tenants", [summary(t) for t in tenants], offset, limit)
 
         return await run_tool("inforcer_tenants_list", client_factory, action)
 

@@ -19,7 +19,22 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from ..api_client import InforcerClient
-from ._common import READ_ONLY, ClientFactory, ContinuationToken, TenantArg, as_list, compact, data, page, resolve_tenant_id, run_tool
+from ._common import (
+    READ_ONLY,
+    ClientFactory,
+    ContinuationToken,
+    Limit,
+    Offset,
+    TenantArg,
+    as_list,
+    compact,
+    data,
+    decode_cursor,
+    local_page,
+    page,
+    resolve_tenant_id,
+    run_tool,
+)
 
 Search = Annotated[str | None, Field(description="Text to search for (name, email / UPN).")]
 
@@ -31,8 +46,9 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
 
         async def action(client: InforcerClient) -> dict:
             tenant_id = await resolve_tenant_id(client, tenant)
-            payload = await client.get(f"beta/tenants/{tenant_id}/users", compact({"search": search, "continuationToken": continuation_token}))
-            return {"tenant_id": tenant_id} | page(payload, "users")
+            token, skip = decode_cursor(continuation_token)
+            payload = await client.get(f"beta/tenants/{tenant_id}/users", compact({"search": search, "continuationToken": token}))
+            return {"tenant_id": tenant_id} | page(payload, "users", token, skip)
 
         return await run_tool("inforcer_users_list", client_factory, action)
 
@@ -55,8 +71,9 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
 
         async def action(client: InforcerClient) -> dict:
             tenant_id = await resolve_tenant_id(client, tenant)
-            payload = await client.get(f"beta/tenants/{tenant_id}/groups", compact({"search": search, "continuationToken": continuation_token}))
-            return {"tenant_id": tenant_id} | page(payload, "groups")
+            token, skip = decode_cursor(continuation_token)
+            payload = await client.get(f"beta/tenants/{tenant_id}/groups", compact({"search": search, "continuationToken": token}))
+            return {"tenant_id": tenant_id} | page(payload, "groups", token, skip)
 
         return await run_tool("inforcer_groups_list", client_factory, action)
 
@@ -74,12 +91,12 @@ def register(mcp: FastMCP, client_factory: ClientFactory) -> None:
         return await run_tool("inforcer_groups_get", client_factory, action)
 
     @mcp.tool(annotations=READ_ONLY)
-    async def inforcer_roles_list(tenant: TenantArg) -> str:
+    async def inforcer_roles_list(tenant: TenantArg, offset: Offset = None, limit: Limit = None) -> str:
         """List a tenant's Entra directory roles: built-in, enabled and privileged flags."""
 
         async def action(client: InforcerClient) -> dict:
             tenant_id = await resolve_tenant_id(client, tenant)
             roles = as_list(data(await client.get(f"beta/tenants/{tenant_id}/roles")))
-            return {"tenant_id": tenant_id, "roles": roles, "count": len(roles)}
+            return {"tenant_id": tenant_id} | local_page("roles", roles, offset, limit)
 
         return await run_tool("inforcer_roles_list", client_factory, action)
