@@ -18,7 +18,6 @@ import json
 
 import httpx
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
 
 from inforcer_mcp import api_client
 from inforcer_mcp.api_client import InforcerClient, InforcerCredentials, InforcerError
@@ -294,8 +293,9 @@ async def test_reports_run_body(monkeypatch):
 
 
 async def test_reports_run_requires_reports():
-    with pytest.raises(ToolError, match="at least 1 item"):
-        await create_mcp_server().call_tool("inforcer_reports_run", {"reports": [], "tenants": ["139"]})
+    content, _ = await create_mcp_server().call_tool("inforcer_reports_run", {"reports": [], "tenants": ["139"]})
+    error = json.loads(content[0].text)["error"]
+    assert error["code"] == "invalid_argument" and "at least 1 item" in error["message"]
 
 
 async def test_run_status_running_and_completed(monkeypatch):
